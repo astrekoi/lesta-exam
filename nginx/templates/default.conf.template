@@ -1,0 +1,36 @@
+upstream app {
+    server app:${API_PORT};
+}
+
+upstream jenkins {
+    server jenkins:${JENKINS_PORT};
+}
+
+server {
+    listen 80;
+    
+    location /api/ {
+        proxy_pass http://app/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /jenkins/ {
+        proxy_pass http://jenkins/jenkins/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Server $host;
+        proxy_redirect http:// https://;
+    }
+
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}
