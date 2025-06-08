@@ -124,6 +124,58 @@ services:
         build-timeout:latest
         ant:latest
         gradle:latest
+        maven-plugin:latest
+        nodejs:latest
+        jdk-tool:latest
+        pipeline-maven:latest
+        pipeline-nodejs:latest
+        build-tools-installer:latest
+        tool-env:latest
+        configuration-as-code:latest
+        job-dsl:latest
+        maven-dependency-update-trigger:latest
+        gradle-plugin:latest
+        sonar:latest
+        jacoco:latest
+        junit:latest
+        xvfb:latest
+        performance:latest
+        publish-over-ssh:latest
+        ec2:latest
+        kubernetes:latest
+        terraform:latest
+        ansible:latest
+        matrix-project:latest
+        build-name-setter:latest
+        envfile:latest
+        extended-choice-parameter:latest
+        conditional-buildstep:latest
+        parameterized-trigger:latest
+        copy-artifact:latest
+        archive-artifacts:latest
+        htmlpublisher:latest
+        test-results-analyzer:latest
+        build-monitor-plugin:latest
+        dashboard-view:latest
+        nested-view:latest
+        favorite:latest
+        cloudbees-folder:latest
+        workflow-multibranch:latest
+        pipeline-input-step:latest
+        pipeline-milestone-step:latest
+        pipeline-rest-api:latest
+        pipeline-build-step:latest
+        pipeline-graph-analysis:latest
+        workflow-job:latest
+        workflow-support:latest
+        workflow-scm-step:latest
+        pipeline-stage-step:latest
+        lockable-resources:latest
+        resource-disposer:latest
+        build-user-vars-plugin:latest
+        environment-script:latest
+        envinject:latest
+        global-variable-string-parameter:latest
     ports:
       - "${JENKINS_PORT:-9090}:8080"
       - "${JENKINS_AGENT_PORT:-50000}:50000"
@@ -135,7 +187,7 @@ services:
       interval: 60s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 180s
     logging: *default-logging
     networks:
       - app-network
