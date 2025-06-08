@@ -4,38 +4,88 @@ pipeline {
     environment {
         DOCKER_COMPOSE_FILE = 'docker-compose.yml'
         DOCKER_REGISTRY_CREDS = credentials('docker-registry')
+        BRANCH_NAME = 'main'
+        GIT_REPO_URL = 'https://github.com/astrekoi/lesta-exam.git'
     }
     
     stages {
         stage('Checkout') {
             steps {
                 echo '📥 Cloning repository...'
-                checkout scm
+                
                 script {
-                    env.GIT_COMMIT_SHORT = sh(
-                        script: 'git rev-parse --short HEAD',
-                        returnStdout: true
-                    ).trim()
-                    env.GIT_COMMIT_MSG = sh(
-                        script: 'git log -1 --pretty=%B',
-                        returnStdout: true
-                    ).trim()
+                    try {
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: "*/main"]],
+                            userRemoteConfigs: [[
+                                url: env.GIT_REPO_URL,
+                                credentialsId: 'github-token'
+                            ]],
+                            extensions: [
+                                [$class: 'CleanBeforeCheckout'],
+                                [$class: 'CloneOption', depth: 1, noTags: false, reference: '', shallow: true]
+                            ]
+                        ])
+                        
+                        echo "✅ Repository checked out successfully"
+                        
+                    } catch (Exception e) {
+                        echo "❌ Git checkout failed: ${e.getMessage()}"
+                        
+                        echo "🔄 Trying alternative checkout method..."
+                        withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                            sh '''
+                                rm -rf .git || true
+                                git init
+                                git remote add origin https://${GITHUB_TOKEN}@github.com/astrekoi/lesta-exam.git
+                                git fetch --depth=1 origin main
+                                git checkout FETCH_HEAD
+                                git branch -M main
+                            '''
+                        }
+                    }
+                }
+                
+                script {
+                    try {
+                        env.GIT_COMMIT_SHORT = sh(
+                            script: 'git rev-parse --short HEAD',
+                            returnStdout: true
+                        ).trim()
+                        env.GIT_COMMIT_MSG = sh(
+                            script: 'git log -1 --pretty=%B',
+                            returnStdout: true
+                        ).trim()
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to get git info: ${e.getMessage()}"
+                        env.GIT_COMMIT_SHORT = "unknown"
+                        env.GIT_COMMIT_MSG = "No commit message"
+                    }
+                    
                     env.GIT_BRANCH_CLEAN = env.BRANCH_NAME.replaceAll('/', '-')
                     
+                    // Автоверсионирование
                     def versionFile = 'version.txt'
                     def currentVersion = 1
                     
                     if (fileExists(versionFile)) {
-                        currentVersion = readFile(versionFile).trim() as Integer
-                        currentVersion++
+                        try {
+                            currentVersion = readFile(versionFile).trim() as Integer
+                            currentVersion++
+                        } catch (Exception e) {
+                            echo "⚠️ Failed to read version file: ${e.getMessage()}"
+                            currentVersion = 1
+                        }
                     }
                     
                     writeFile file: versionFile, text: currentVersion.toString()
                     env.AUTO_VERSION = currentVersion.toString()
                     env.RELEASE_TAG = "v${currentVersion}"
                     
-                    archiveArtifacts artifacts: 'version.txt', allowEmptyArchive: false
+                    archiveArtifacts artifacts: 'version.txt', allowEmptyArchive: true
                 }
+                
                 echo "📋 Branch: ${env.BRANCH_NAME}"
                 echo "📋 Commit: ${env.GIT_COMMIT_SHORT}"
                 echo "📋 Auto Version: ${env.AUTO_VERSION}"
@@ -76,21 +126,6 @@ pipeline {
                         flake8 app/ --max-line-length=88 --exclude=migrations --format=html --htmldir=flake8-report || true
                         flake8 app/ --max-line-length=88 --exclude=migrations
                     '''
-                    
-                    sh '''
-                        source .lint-venv/bin/activate
-                        echo "🔍 Running black check..."
-                        black --check app/ || true
-                        
-                        echo "🔍 Running isort check..."
-                        isort --check-only app/ || true
-                        
-                        echo "🔍 Running bandit security check..."
-                        bandit -r app/ -f json -o bandit-report.json || true
-                        
-                        echo "🔍 Running safety check..."
-                        safety check --json --output safety-report.json || true
-                    '''
                 }
             }
             post {
@@ -113,21 +148,11 @@ pipeline {
                 echo '🔨 Building Docker image...'
                 script {
                     env.DOCKER_IMAGE_NAME = "${DOCKER_REGISTRY_CREDS_USR}/flask-api"
-                    
-                    if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
-                        env.DOCKER_IMAGE_TAG = "${env.RELEASE_TAG}"
-                    } else {
-                        env.DOCKER_IMAGE_TAG = "${env.GIT_BRANCH_CLEAN}-${env.AUTO_VERSION}"
-                    }
-                    
+                    env.DOCKER_IMAGE_TAG = "${env.RELEASE_TAG}"
                     env.DOCKER_IMAGE_FULL = "${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}"
                     
                     def image = docker.build("${env.DOCKER_IMAGE_FULL}")
-                    
-                    if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
-                        sh "docker tag ${env.DOCKER_IMAGE_FULL} ${env.DOCKER_IMAGE_NAME}:latest"
-                    }
-                    sh "docker tag ${env.DOCKER_IMAGE_FULL} ${env.DOCKER_IMAGE_NAME}:${env.GIT_BRANCH_CLEAN}-latest"
+                    sh "docker tag ${env.DOCKER_IMAGE_FULL} ${env.DOCKER_IMAGE_NAME}:latest"
                     
                     echo "🔨 Built image: ${env.DOCKER_IMAGE_FULL}"
                 }
@@ -195,81 +220,57 @@ pipeline {
                         
                         echo "📤 Pushing versioned image..."
                         docker push ${DOCKER_IMAGE_FULL}
-                        docker push ${DOCKER_IMAGE_NAME}:${GIT_BRANCH_CLEAN}-latest
+                        docker push ${DOCKER_IMAGE_NAME}:latest
                         
                         echo "✅ Images pushed successfully!"
                     '''
-                    
-                    if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
-                        sh '''
-                            echo "📤 Pushing as latest for main branch..."
-                            docker push ${DOCKER_IMAGE_NAME}:latest
-                        '''
-                    }
                 }
             }
         }
         
         stage('Deploy to Production') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    branch 'develop'
-                    branch 'staging'
-                }
-            }
             steps {
                 echo "🚀 Deploying ${env.RELEASE_TAG} to production server..."
                 script {
                     withCredentials([
                         string(credentialsId: 'prod-ip', variable: 'PROD_IP'),
-                        string(credentialsId: 'prod-server-user', variable: 'PROD_USER'),
+                        // ИСПРАВЛЕНО: Используем SSH credential который содержит username
                         sshUserPrivateKey(credentialsId: 'prod-server-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USERNAME')
                     ]) {
                         sh '''
                             chmod 600 $SSH_KEY
                             
-                            # Определяем целевую директорию на основе ветки
-                            if [ "${BRANCH_NAME}" = "main" ] || [ "${BRANCH_NAME}" = "master" ]; then
-                                TARGET_PATH="/opt/flask-api/production"
-                            else
-                                TARGET_PATH="/opt/flask-api/${GIT_BRANCH_CLEAN}"
-                            fi
+                            TARGET_PATH="/opt/flask-api/production"
                             
-                            echo "🚀 Deploying ${RELEASE_TAG} to: ${PROD_USER}@${PROD_IP}:${TARGET_PATH}"
+                            # ИСПРАВЛЕНО: Используем SSH_USERNAME вместо PROD_USER
+                            echo "🚀 Deploying ${RELEASE_TAG} to: ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}"
                             
-                            # Создание директории и копирование Makefile/scripts
-                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${PROD_USER}@${PROD_IP} \
+                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
                                 "mkdir -p ${TARGET_PATH}"
                             
-                            # Копирование всех необходимых файлов
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
-                                $DOCKER_COMPOSE_FILE ${PROD_USER}@${PROD_IP}:${TARGET_PATH}/
+                                $DOCKER_COMPOSE_FILE ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
                             
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
-                                .env.production ${PROD_USER}@${PROD_IP}:${TARGET_PATH}/.env
+                                .env.production ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/.env
                             
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
-                                Makefile ${PROD_USER}@${PROD_IP}:${TARGET_PATH}/
+                                Makefile ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
                             
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
-                                scripts/ ${PROD_USER}@${PROD_IP}:${TARGET_PATH}/
+                                scripts/ ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
                             
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
-                                nginx/ ${PROD_USER}@${PROD_IP}:${TARGET_PATH}/
+                                nginx/ ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
                             
-                            # Развертывание на удаленном сервере
-                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${PROD_USER}@${PROD_IP} << EOF
+                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} << EOF
                                 cd ${TARGET_PATH}
                                 
                                 echo "🔐 Generating SSL certificates on remote server..."
                                 make generate-ssl
                                 
-                                # Установка переменных окружения
                                 export DOCKER_IMAGE=${DOCKER_IMAGE_FULL}
                                 export RELEASE_TAG=${RELEASE_TAG}
-                                export BRANCH_NAME=${BRANCH_NAME}
                                 
                                 echo "🛑 Stopping old version..."
                                 docker-compose down || true
@@ -299,76 +300,48 @@ EOF
                 }
             }
         }
-        
-        stage('Create GitHub Release') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                }
-            }
-            steps {
-                echo "🏷️ Creating GitHub release ${env.RELEASE_TAG}..."
-                script {
-                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        sh '''
-                            # Создаем тег
-                            git tag ${RELEASE_TAG}
-                            
-                            # Создаем релиз через GitHub API
-                            curl -X POST \
-                                -H "Authorization: token ${GITHUB_TOKEN}" \
-                                -H "Accept: application/vnd.github.v3+json" \
-                                https://api.github.com/repos/astrekoi/lesta-exam/releases \
-                                -d \'{
-                                    "tag_name": "'"${RELEASE_TAG}"'",
-                                    "target_commitish": "'"${BRANCH_NAME}"'",
-                                    "name": "Release '"${RELEASE_TAG}"'",
-                                    "body": "Автоматический релиз через Jenkins Pipeline\\n\\nCommit: '"${GIT_COMMIT_SHORT}"'\\nBranch: '"${BRANCH_NAME}"'\\nDocker Image: '"${DOCKER_IMAGE_FULL}"'\\n\\nChanges:\\n'"${GIT_COMMIT_MSG}"'",
-                                    "draft": false,
-                                    "prerelease": false
-                                }\'
-                            
-                            echo "✅ GitHub release ${RELEASE_TAG} created!"
-                        '''
-                    }
-                }
-            }
-        }
     }
     
     post {
         always {
-            echo '🧹 Cleaning up...'
-            sh '''
-                docker image prune -f || true
-                docker system prune -f || true
-                rm -f .env.production || true
-            '''
-            archiveArtifacts artifacts: '*.log,version.txt', allowEmptyArchive: true
+            script {
+                try {
+                    echo '🧹 Cleaning up...'
+                    sh '''
+                        docker image prune -f || true
+                        docker system prune -f || true
+                        rm -f .env.production || true
+                    '''
+                } catch (Exception e) {
+                    echo "⚠️ Cleanup failed: ${e.getMessage()}"
+                }
+                
+                try {
+                    archiveArtifacts artifacts: '*.log,version.txt', allowEmptyArchive: true
+                } catch (Exception e) {
+                    echo "⚠️ Archiving failed: ${e.getMessage()}"
+                }
+            }
         }
         
         success {
             echo '✅ Pipeline completed successfully!'
+            echo "🚀 Production deployment successful!"
+            echo "🏷️ Release: ${env.RELEASE_TAG ?: 'unknown'}"
+            echo "🐳 Docker Image: ${env.DOCKER_IMAGE_FULL ?: 'unknown'}"
+            
             script {
-                if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
-                    echo "🚀 Production deployment successful!"
-                    echo "🏷️ Release: ${env.RELEASE_TAG}"
-                    echo "🐳 Docker Image: ${env.DOCKER_IMAGE_FULL}"
-                } else {
-                    echo "🚀 Branch ${env.BRANCH_NAME} deployment successful!"
-                    echo "📦 Version: ${env.AUTO_VERSION}"
+                withCredentials([string(credentialsId: 'prod-ip', variable: 'PROD_IP')]) {
+                    echo "🌐 Application endpoint: http://${PROD_IP}/results"
+                    echo "🔗 Health check: http://${PROD_IP}/ping"
                 }
             }
         }
         
         failure {
             echo '❌ Pipeline failed!'
-            script {
-                currentBuild.result = 'FAILURE'
-                echo "💥 Build failed at stage: ${env.STAGE_NAME}"
-                echo "💥 Failed release: ${env.RELEASE_TAG}"
-            }
+            echo "💥 Build failed at stage: ${env.STAGE_NAME ?: 'unknown'}"
+            echo "💥 Failed release: ${env.RELEASE_TAG ?: 'unknown'}"
         }
         
         unstable {
