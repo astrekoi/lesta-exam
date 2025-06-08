@@ -1,14 +1,40 @@
 pipeline {
     agent any
-    
+
+    tools {
+        nodejs 'node-18'
+        jdk 'openjdk-11'
+        maven 'maven-3.8'
+        gradle 'gradle-7'
+    }
+
     environment {
         DOCKER_COMPOSE_FILE = 'docker-compose.yml'
         DOCKER_REGISTRY_CREDS = credentials('docker-registry')
         BRANCH_NAME = 'main'
         GIT_REPO_URL = 'https://github.com/astrekoi/lesta-exam.git'
+
+        JAVA_HOME = tool 'openjdk-11'
+        NODE_HOME = tool 'node-18'
     }
     
     stages {
+        stage('Environment Check') {
+            steps {
+                sh '''
+                    echo "=== Tool Versions ==="
+                    echo "Node: $(node --version)"
+                    echo "NPM: $(npm --version)"
+                    echo "Java: $(java -version 2>&1 | head -1)"
+                    echo "Maven: $(mvn --version | head -1)"
+                    echo "Gradle: $(gradle --version | grep Gradle)"
+                    echo "Git: $(git --version)"
+                    echo "Docker: $(docker --version)"
+                    echo "========================"
+                '''
+            }
+        }
+
         stage('Checkout') {
             steps {
                 echo '📥 Downloading repository...'
@@ -260,7 +286,7 @@ pipeline {
                                 echo "🌐 Release: ${RELEASE_TAG}"
                                 echo "📍 Location: ${TARGET_PATH}"
                                 echo "🔗 URL: http://${PROD_IP}"
-EOF
+                            EOF
                         '''
                     }
                 }
@@ -270,24 +296,22 @@ EOF
     
     post {
         always {
-            node {
-                script {
-                    try {
-                        echo '🧹 Cleaning up...'
-                        sh '''
-                            docker image prune -f || true
-                            docker system prune -f || true
-                            rm -f .env.production || true
-                        '''
-                    } catch (Exception e) {
-                        echo "⚠️ Cleanup failed: ${e.getMessage()}"
-                    }
-                    
-                    try {
-                        archiveArtifacts artifacts: '*.log,version.txt', allowEmptyArchive: true
-                    } catch (Exception e) {
-                        echo "⚠️ Archiving failed: ${e.getMessage()}"
-                    }
+            script {
+                try {
+                    echo '🧹 Cleaning up...'
+                    sh '''
+                        docker image prune -f || true
+                        docker system prune -f || true
+                        rm -f .env.production || true
+                    '''
+                } catch (Exception e) {
+                    echo "⚠️ Cleanup failed: ${e.getMessage()}"
+                }
+                
+                try {
+                    archiveArtifacts artifacts: '*.log,version.txt', allowEmptyArchive: true
+                } catch (Exception e) {
+                    echo "⚠️ Archiving failed: ${e.getMessage()}"
                 }
             }
         }
