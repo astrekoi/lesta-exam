@@ -3,7 +3,7 @@ pipeline {
 
     tools {
         nodejs 'node-18'
-        jdk 'openjdk-11'
+        jdk 'openjdk-11' 
         maven 'maven-3.8'
         gradle 'gradle-7'
     }
@@ -13,7 +13,6 @@ pipeline {
         DOCKER_REGISTRY_CREDS = credentials('docker-registry')
         BRANCH_NAME = 'main'
         GIT_REPO_URL = 'https://github.com/astrekoi/lesta-exam.git'
-
         JAVA_HOME = tool 'openjdk-11'
         NODE_HOME = tool 'node-18'
     }
@@ -34,7 +33,7 @@ pipeline {
                 '''
             }
         }
-
+        
         stage('Checkout') {
             steps {
                 echo '📥 Downloading repository...'
@@ -226,7 +225,6 @@ pipeline {
                 script {
                     withCredentials([
                         string(credentialsId: 'prod-ip', variable: 'PROD_IP'),
-                        // ИСПРАВЛЕНО: Используем SSH credential который содержит username
                         sshUserPrivateKey(credentialsId: 'prod-server-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USERNAME')
                     ]) {
                         sh '''
@@ -234,7 +232,6 @@ pipeline {
                             
                             TARGET_PATH="/opt/flask-api/production"
                             
-                            # ИСПРАВЛЕНО: Используем SSH_USERNAME вместо PROD_USER
                             echo "🚀 Deploying ${RELEASE_TAG} to: ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}"
                             
                             ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
@@ -286,7 +283,7 @@ pipeline {
                                 echo "🌐 Release: ${RELEASE_TAG}"
                                 echo "📍 Location: ${TARGET_PATH}"
                                 echo "🔗 URL: http://${PROD_IP}"
-                            EOF
+EOF
                         '''
                     }
                 }
@@ -296,24 +293,7 @@ pipeline {
     
     post {
         always {
-            script {
-                try {
-                    echo '🧹 Cleaning up...'
-                    sh '''
-                        docker image prune -f || true
-                        docker system prune -f || true
-                        rm -f .env.production || true
-                    '''
-                } catch (Exception e) {
-                    echo "⚠️ Cleanup failed: ${e.getMessage()}"
-                }
-                
-                try {
-                    archiveArtifacts artifacts: '*.log,version.txt', allowEmptyArchive: true
-                } catch (Exception e) {
-                    echo "⚠️ Archiving failed: ${e.getMessage()}"
-                }
-            }
+            echo '🧹 Cleaning up...'
         }
         
         success {
