@@ -36,24 +36,33 @@ pipeline {
         
         stage('Checkout') {
             steps {
-                echo '📥 Downloading repository...'
+                echo '📥 Downloading repository as ZIP...'
                 
                 sh '''
-                    # Скачиваем репозиторий как ZIP архив
-                    curl -L https://github.com/astrekoi/lesta-exam/archive/main.zip -o repo.zip
+                    # Очистка workspace
+                    rm -rf * .git* || true
                     
-                    # Распаковываем
+                    # Скачивание ZIP архива репозитория
+                    curl -L https://github.com/astrekoi/lesta-exam/archive/refs/heads/main.zip -o repo.zip
+                    
+                    # Распаковка
                     unzip -o repo.zip
                     
-                    # Переносим содержимое из папки в корень workspace
-                    mv lesta-exam-main/* . || true
-                    mv lesta-exam-main/.* . 2>/dev/null || true
+                    # Перемещение файлов из подпапки в корень
+                    shopt -s dotglob
+                    mv lesta-exam-main/* . 2>/dev/null || true
+                    rmdir lesta-exam-main 2>/dev/null || true
                     
-                    # Убираем временные файлы
-                    rm -rf lesta-exam-main repo.zip
+                    # Удаление временных файлов
+                    rm -f repo.zip
+                    
+                    # Проверка содержимого
+                    echo "✅ Repository contents:"
+                    ls -la
                 '''
                 
                 script {
+                    // Версионирование
                     def versionFile = 'version.txt'
                     def currentVersion = 1
                     
@@ -62,7 +71,6 @@ pipeline {
                             currentVersion = readFile(versionFile).trim() as Integer
                             currentVersion++
                         } catch (Exception e) {
-                            echo "⚠️ Failed to read version file: ${e.getMessage()}"
                             currentVersion = 1
                         }
                     }
@@ -70,17 +78,16 @@ pipeline {
                     writeFile file: versionFile, text: currentVersion.toString()
                     env.AUTO_VERSION = currentVersion.toString()
                     env.RELEASE_TAG = "v${currentVersion}"
-                    env.GIT_COMMIT_SHORT = "latest"
-                    env.GIT_COMMIT_MSG = "Downloaded from GitHub"
+                    env.GIT_COMMIT_SHORT = "zip-download"
+                    env.GIT_COMMIT_MSG = "Downloaded from GitHub ZIP"
                     env.GIT_BRANCH_CLEAN = "main"
                     
                     archiveArtifacts artifacts: 'version.txt', allowEmptyArchive: true
                 }
                 
                 echo "📋 Branch: main"
-                echo "📋 Commit: latest" 
-                echo "📋 Auto Version: ${env.AUTO_VERSION}"
-                echo "📋 Release Tag: ${env.RELEASE_TAG}"
+                echo "📋 Version: ${env.AUTO_VERSION}"
+                echo "📋 Release: ${env.RELEASE_TAG}"
             }
         }
         
@@ -90,7 +97,6 @@ pipeline {
                 script {
                     withCredentials([file(credentialsId: 'prod-env', variable: 'PROD_ENV_FILE')]) {
                         sh '''
-                            echo "📄 Copying production environment file..."
                             cp $PROD_ENV_FILE .env.production
                             echo "✅ Production environment loaded"
                         '''
