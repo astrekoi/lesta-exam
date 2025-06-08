@@ -11,61 +11,24 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo '📥 Cloning repository...'
+                echo '📥 Downloading repository...'
+                
+                sh '''
+                    # Скачиваем репозиторий как ZIP архив
+                    curl -L https://github.com/astrekoi/lesta-exam/archive/main.zip -o repo.zip
+                    
+                    # Распаковываем
+                    unzip -o repo.zip
+                    
+                    # Переносим содержимое из папки в корень workspace
+                    mv lesta-exam-main/* . || true
+                    mv lesta-exam-main/.* . 2>/dev/null || true
+                    
+                    # Убираем временные файлы
+                    rm -rf lesta-exam-main repo.zip
+                '''
                 
                 script {
-                    try {
-                        checkout([
-                            $class: 'GitSCM',
-                            branches: [[name: "*/main"]],
-                            userRemoteConfigs: [[
-                                url: env.GIT_REPO_URL,
-                                credentialsId: 'github-token'
-                            ]],
-                            extensions: [
-                                [$class: 'CleanBeforeCheckout'],
-                                [$class: 'CloneOption', depth: 1, noTags: false, reference: '', shallow: true]
-                            ]
-                        ])
-                        
-                        echo "✅ Repository checked out successfully"
-                        
-                    } catch (Exception e) {
-                        echo "❌ Git checkout failed: ${e.getMessage()}"
-                        
-                        echo "🔄 Trying alternative checkout method..."
-                        withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                            sh '''
-                                rm -rf .git || true
-                                git init
-                                git remote add origin https://${GITHUB_TOKEN}@github.com/astrekoi/lesta-exam.git
-                                git fetch --depth=1 origin main
-                                git checkout FETCH_HEAD
-                                git branch -M main
-                            '''
-                        }
-                    }
-                }
-                
-                script {
-                    try {
-                        env.GIT_COMMIT_SHORT = sh(
-                            script: 'git rev-parse --short HEAD',
-                            returnStdout: true
-                        ).trim()
-                        env.GIT_COMMIT_MSG = sh(
-                            script: 'git log -1 --pretty=%B',
-                            returnStdout: true
-                        ).trim()
-                    } catch (Exception e) {
-                        echo "⚠️ Failed to get git info: ${e.getMessage()}"
-                        env.GIT_COMMIT_SHORT = "unknown"
-                        env.GIT_COMMIT_MSG = "No commit message"
-                    }
-                    
-                    env.GIT_BRANCH_CLEAN = env.BRANCH_NAME.replaceAll('/', '-')
-                    
-                    // Автоверсионирование
                     def versionFile = 'version.txt'
                     def currentVersion = 1
                     
@@ -82,12 +45,15 @@ pipeline {
                     writeFile file: versionFile, text: currentVersion.toString()
                     env.AUTO_VERSION = currentVersion.toString()
                     env.RELEASE_TAG = "v${currentVersion}"
+                    env.GIT_COMMIT_SHORT = "latest"
+                    env.GIT_COMMIT_MSG = "Downloaded from GitHub"
+                    env.GIT_BRANCH_CLEAN = "main"
                     
                     archiveArtifacts artifacts: 'version.txt', allowEmptyArchive: true
                 }
                 
-                echo "📋 Branch: ${env.BRANCH_NAME}"
-                echo "📋 Commit: ${env.GIT_COMMIT_SHORT}"
+                echo "📋 Branch: main"
+                echo "📋 Commit: latest" 
                 echo "📋 Auto Version: ${env.AUTO_VERSION}"
                 echo "📋 Release Tag: ${env.RELEASE_TAG}"
             }
@@ -304,22 +270,24 @@ EOF
     
     post {
         always {
-            script {
-                try {
-                    echo '🧹 Cleaning up...'
-                    sh '''
-                        docker image prune -f || true
-                        docker system prune -f || true
-                        rm -f .env.production || true
-                    '''
-                } catch (Exception e) {
-                    echo "⚠️ Cleanup failed: ${e.getMessage()}"
-                }
-                
-                try {
-                    archiveArtifacts artifacts: '*.log,version.txt', allowEmptyArchive: true
-                } catch (Exception e) {
-                    echo "⚠️ Archiving failed: ${e.getMessage()}"
+            node {
+                script {
+                    try {
+                        echo '🧹 Cleaning up...'
+                        sh '''
+                            docker image prune -f || true
+                            docker system prune -f || true
+                            rm -f .env.production || true
+                        '''
+                    } catch (Exception e) {
+                        echo "⚠️ Cleanup failed: ${e.getMessage()}"
+                    }
+                    
+                    try {
+                        archiveArtifacts artifacts: '*.log,version.txt', allowEmptyArchive: true
+                    } catch (Exception e) {
+                        echo "⚠️ Archiving failed: ${e.getMessage()}"
+                    }
                 }
             }
         }
