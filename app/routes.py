@@ -1,107 +1,108 @@
-from flask import Blueprint, request, jsonify, current_app
-from app.models import ScoreRecord
-from app import db
-from pydantic import BaseModel, ValidationError
-from typing import Dict, Any
+from flask import Blueprint, jsonify, request
+from models.score_recorder import ScoreRecord, db
+from validators import validate_submit_data, validate_content_type
 
 api_bp = Blueprint('api', __name__)
-
-class SubmitRequest(BaseModel):
-    """Pydantic модель для валидации POST /submit запросов"""
-    name: str
-    score: int
-    
-    class Config:
-        str_strip_whitespace = True
-        validate_assignment = True
-
 
 @api_bp.route('/ping', methods=['GET'])
 def ping():
     """
-    Healthcheck эндпоинт для мониторинга.
-    Проверяет доступность приложения и базы данных.
+    GET /ping - healthcheck эндпоинт согласно заданию.
+    Возвращает статус-сообщение {"status": "ok"}.
     """
     try:
-        db.session.execute('SELECT 1')
-        return jsonify({"status": "ok", "database": "connected"}), 200
+        with db.engine.connect() as conn:
+            conn.execute(db.text('SELECT 1'))
+        return jsonify({"status": "ok"})
     except Exception as e:
-        current_app.logger.error(f"Database health check failed: {e}")
-        return jsonify({
-            "status": "error", 
-            "database": "disconnected",
-            "error": str(e)
-        }), 503
-
+        return jsonify({"status": "error", "message": str(e)}), 503
 
 @api_bp.route('/submit', methods=['POST'])
 def submit():
     """
-    POST /submit - сохранение данных в базу.
+    POST /submit - эндпоинт для сохранения данных согласно заданию.
     Принимает JSON: {"name": "Kirill", "score": 88}
+    Сохраняет данные в базу данных PostgreSQL.
     """
     try:
-        if not request.is_json:
-            return jsonify({"error": "Content-Type must be application/json"}), 400
+        is_valid_content, content_error = validate_content_type(request)
+        if not is_valid_content:
+            return jsonify({"error": content_error}), 400
         
-        submit_data = SubmitRequest(**request.get_json())
+        data = request.get_json()
+        is_valid, error_msg, cleaned_data = validate_submit_data(data)
         
-        if submit_data.score < 0 or submit_data.score > 100:
-            return jsonify({"error": "Score must be between 0 and 100"}), 400
+        if not is_valid:
+            return jsonify({"error": error_msg}), 400
         
-        if len(submit_data.name) < 1 or len(submit_data.name) > 255:
-            return jsonify({"error": "Name must be between 1 and 255 characters"}), 400
-        
-        record, error = ScoreRecord.create_record(
-            name=submit_data.name, 
-            score=submit_data.score
+        record, db_error = ScoreRecord.create_record(
+            name=cleaned_data['name'], 
+            score=cleaned_data['score']
         )
         
-        if error:
-            current_app.logger.error(f"Failed to create record: {error}")
-            return jsonify({"error": "Failed to save record"}), 500
+        if db_error:
+            return jsonify({
+                "error": "Failed to save record", 
+                "details": db_error
+            }), 500
         
-        current_app.logger.info(f"Created record: {record}")
         return jsonify({
             "message": "Record created successfully",
             "data": record.to_dict()
         }), 201
         
-    except ValidationError as e:
-        return jsonify({"error": "Invalid input data", "details": e.errors()}), 400
     except Exception as e:
-        current_app.logger.error(f"Unexpected error in /submit: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
+        return jsonify({
+            "error": "Internal server error", 
+            "details": str(e)
+        }), 500
 
 @api_bp.route('/results', methods=['GET'])
 def results():
     """
-    GET /results - получение всех записей из базы.
-    Возвращает JSON массив с записями.
+    GET /results - эндпоинт для получения всех записей согласно заданию.
+    Возвращает все записи из базы данных в формате JSON.
     """
     try:
         records = ScoreRecord.get_all_records()
         return jsonify([record.to_dict() for record in records]), 200
+        
     except Exception as e:
-        current_app.logger.error(f"Failed to fetch results: {e}")
-        return jsonify({"error": "Failed to fetch records"}), 500
+        return jsonify({
+            "error": "Failed to fetch records", 
+            "details": str(e)
+        }), 500
 
+@api_bp.route('/health', methods=['GET'])
+def health():
+    """Расширенный healthcheck с информацией о БД"""
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(db.text('SELECT 1'))
+        
+        total_records = ScoreRecord.query.count()
+        
+        return jsonify({
+            "status": "ok",
+            "database": "connected",
+            "total_records": total_records
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "database": "disconnected",
+            "error": str(e)
+        }), 503
 
 @api_bp.errorhandler(404)
 def not_found(error):
-    """Обработчик 404 ошибок"""
     return jsonify({"error": "Endpoint not found"}), 404
-
 
 @api_bp.errorhandler(405)
 def method_not_allowed(error):
-    """Обработчик 405 ошибок"""
     return jsonify({"error": "Method not allowed"}), 405
-
 
 @api_bp.errorhandler(500)
 def internal_error(error):
-    """Обработчик 500 ошибок"""
     db.session.rollback()
     return jsonify({"error": "Internal server error"}), 500

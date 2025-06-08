@@ -1,19 +1,17 @@
-FROM python:3.9.21-bookworm AS base
+FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY requirements.txt requirements.txt
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-RUN pip install -r requirements.txt && \
-    apt clean -y && \
-    rm -rf /var/lib/apt/lists
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY app/ ./
 
-RUN groupadd -r user && \ 
-    useradd -g user -m -s /bin/bash user && \
-    chown -R user:user /app
+RUN useradd -m flask && chown -R flask:flask /app
+USER flask
 
-USER user
+EXPOSE 5000
 
-ENTRYPOINT ["/bin/bash", "-c", "set -eo pipefail && make run"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--access-logfile", "-", "app:app"]
