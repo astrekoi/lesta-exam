@@ -200,7 +200,7 @@ pipeline {
                         sh '''
                             chmod 600 $SSH_KEY
                             
-                            TARGET_PATH="$HOME/flask-api/production"
+                            TARGET_PATH="${SSH_USERNAME}/flask-api/production"
                             
                             echo "🚀 Deploying ${RELEASE_TAG} to: ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}"
                             
