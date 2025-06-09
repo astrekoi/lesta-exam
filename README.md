@@ -158,17 +158,17 @@ Nginx reverse proxy был добавлен для решения следующ
 # CI/CD Pipeline
 
 ## Jenkins Pipeline стадии
-1. **Checkout** - клонирование кода из GitHub
-2. **Lint & Code Quality** - flake8, black, bandit, safety
-3. **Build Docker Image** - сборка образа приложения
-4. **Test Application** - интеграционные тесты с PostgreSQL
-5. **Push to Registry** - отправка в Docker Hub
+1. **Environment Check** - проверка, что все переменные доступны
+2. **Checkout** - клонирование кода из GitHub
+3. **Code Quality Check** - flake8, black, bandit, safety
+4. **Build Docker Image** - сборка образа приложения
+5. **Push to Docker Hub** - отправка в Docker Hub с помощью Access Token
 6. **Deploy to Production** - развертывание на удаленном сервере
 
 ![jenkins pipe](./images/jenkins_pipe.png)
 
 ## Docker интеграция
-**Docker-in-Docker НЕ используется!** 
+**Docker-in-Docker НЕ используется или другой агент для докера!** 
 Docker для push образов запущен просто в основном образе Jenkins через монтирование `/var/run/docker.sock`.
 
 **Dockerfile.jenkins содержит:**
