@@ -163,6 +163,31 @@ pipeline {
                 }
             }
         }
+
+        stage('Push to Docker Hub') {
+            steps {
+                echo "📤 Pushing image to Docker Hub..."
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-credentials', 
+                        usernameVariable: 'DOCKER_USERNAME', 
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )]) {
+                        sh '''
+                            echo "🔐 Logging into Docker Hub..."
+                            echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+                            
+                            echo "📤 Pushing images..."
+                            docker push astrokoit/flask-api:${RELEASE_TAG}
+                            docker push astrokoit/flask-api:latest
+                            
+                            echo "✅ Images pushed successfully"
+                            docker logout
+                        '''
+                    }
+                }
+            }
+        }
         
         stage('Deploy to Production') {
             steps {
