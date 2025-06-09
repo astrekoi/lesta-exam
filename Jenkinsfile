@@ -200,22 +200,24 @@ pipeline {
                         sh '''
                             chmod 600 $SSH_KEY
                             
-                            TARGET_PATH="${SSH_USERNAME}/flask-api/production"
+                            TARGET_PATH="/home/${SSH_USERNAME}/flask-api/production"
                             
                             echo "🚀 Deploying ${RELEASE_TAG} to: ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}"
                             
-                            # Создание целевой директории
+                            # Создание директории (без sudo)
                             ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
                                 "mkdir -p ${TARGET_PATH}"
                             
-                            # Копирование файлов
+                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
+                                "ls -la ${TARGET_PATH}"
+                            
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
                                 ${DOCKER_COMPOSE_FILE} ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
+                                
                             
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
                                 .env.production ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/.env
                             
-                            # Копирование директорий
                             find . -type d -name "app" -o -name "scripts" -o -name "nginx" | while read dir; do
                                 if [ -d "$dir" ]; then
                                     scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
@@ -223,7 +225,6 @@ pipeline {
                                 fi
                             done
                             
-                            # Копирование дополнительных файлов
                             for file in Dockerfile requirements.txt Makefile; do
                                 if [ -f "$file" ]; then
                                     scp -i $SSH_KEY -o StrictHostKeyChecking=no \
@@ -231,7 +232,6 @@ pipeline {
                                 fi
                             done
                             
-                            # Выполнение деплоя на удаленном сервере
                             ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} << 'EOF'
                                 cd ${TARGET_PATH}
                                 
