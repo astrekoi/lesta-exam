@@ -204,64 +204,81 @@ pipeline {
                             
                             echo "🚀 Deploying ${RELEASE_TAG} to: ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}"
                             
-                            # Создание директории (без sudo)
                             ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
                                 "mkdir -p ${TARGET_PATH}"
                             
                             ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
                                 "ls -la ${TARGET_PATH}"
                             
+                            echo "📄 Copying docker-compose.yml..."
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
                                 ${DOCKER_COMPOSE_FILE} ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
-                                
+                            
+                            echo "🔄 Updating .env file..."
+                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
+                                "rm -f ${TARGET_PATH}/.env"
                             
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
                                 .env.production ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/.env
                             
+                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
+                                "chmod 600 ${TARGET_PATH}/.env"
+                            
+                            echo "📁 Copying application directories..."
                             find . -type d -name "app" -o -name "scripts" -o -name "nginx" | while read dir; do
                                 if [ -d "$dir" ]; then
+                                    echo "📁 Copying directory: $dir"
                                     scp -i $SSH_KEY -o StrictHostKeyChecking=no -r \
                                         "$dir" ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
                                 fi
                             done
                             
+                            echo "📄 Copying additional files..."
                             for file in Dockerfile requirements.txt Makefile; do
                                 if [ -f "$file" ]; then
+                                    echo "📄 Copying file: $file"
                                     scp -i $SSH_KEY -o StrictHostKeyChecking=no \
                                         "$file" ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
                                 fi
                             done
                             
-                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} << 'EOF'
-                                cd ${TARGET_PATH}
-                                
-                                export DOCKER_IMAGE=${DOCKER_IMAGE_FULL:-"flask-api:latest"}
-                                export RELEASE_TAG=${RELEASE_TAG}
-                                
-                                echo "🛑 Stopping old version..."
-                                docker compose down || true
-                                
-                                if [ ! -z "${DOCKER_IMAGE_FULL}" ]; then
-                                    echo "📥 Pulling image ${DOCKER_IMAGE_FULL}..."
-                                    docker pull ${DOCKER_IMAGE_FULL} || echo "⚠️ Could not pull image, will build locally"
-                                fi
-                                
-                                echo "🚀 Starting application..."
-                                docker compose up -d --build
-                                
-                                echo "⏳ Waiting for services..."
-                                sleep 30
-                                
-                                echo "🏥 Health check..."
-                                curl -f http://localhost/ping || curl -f http://localhost:8080/ping || echo "⚠️ Health check failed"
-                                
-                                echo "✅ Deployment completed!"
-                            EOF
+                            echo "🚀 Executing deployment..."
+                            ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
+                                "export TARGET_PATH='${TARGET_PATH}' && \
+                                export RELEASE_TAG='${RELEASE_TAG}' && \
+                                export DOCKER_IMAGE_FULL='${DOCKER_IMAGE_FULL:-astrokoit/flask-api:latest}' && \
+                                bash -c '
+                                    cd \$TARGET_PATH || exit 1
+                                    
+                                    echo \"📍 Current directory: \$(pwd)\"
+                                    echo \"📋 Files in directory:\"
+                                    ls -la
+                                    
+                                    echo \"🛑 Stopping old version...\"
+                                    docker compose down || true
+                                    
+                                    if [ ! -z \"\$DOCKER_IMAGE_FULL\" ]; then
+                                        echo \"📥 Pulling image \$DOCKER_IMAGE_FULL...\"
+                                        docker pull \$DOCKER_IMAGE_FULL || echo \"⚠️ Could not pull image, will build locally\"
+                                    fi
+                                    
+                                    echo \"🚀 Starting application...\"
+                                    docker compose up -d --build
+                                    
+                                    echo \"⏳ Waiting for services...\"
+                                    sleep 30
+                                    
+                                    echo \"🏥 Health check...\"
+                                    curl -f http://localhost/ping || curl -f http://localhost:8080/ping || echo \"⚠️ Health check failed\"
+                                    
+                                    echo \"✅ Deployment completed!\"
+                                '"
                         '''
                     }
                 }
             }
         }
+
     }
     
     post {
