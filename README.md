@@ -280,3 +280,10 @@ make test
 Пример успешного выполнения:
 
 ![test](./images/test.png)
+
+В данном случае был следующий запрос:
+```bash
+curl 37.9.53.61/results
+```
+
+![windows](./images/test-windows.png)
