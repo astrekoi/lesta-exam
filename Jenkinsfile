@@ -239,7 +239,7 @@ pipeline {
                                 export RELEASE_TAG=${RELEASE_TAG}
                                 
                                 echo "🛑 Stopping old version..."
-                                docker-compose down || true
+                                docker compose down || true
                                 
                                 if [ ! -z "${DOCKER_IMAGE_FULL}" ]; then
                                     echo "📥 Pulling image ${DOCKER_IMAGE_FULL}..."
@@ -247,7 +247,7 @@ pipeline {
                                 fi
                                 
                                 echo "🚀 Starting application..."
-                                docker-compose up -d --build
+                                docker compose up -d --build
                                 
                                 echo "⏳ Waiting for services..."
                                 sleep 30
@@ -256,7 +256,7 @@ pipeline {
                                 curl -f http://localhost/ping || curl -f http://localhost:8080/ping || echo "⚠️ Health check failed"
                                 
                                 echo "✅ Deployment completed!"
-EOF
+                            EOF
                         '''
                     }
                 }
