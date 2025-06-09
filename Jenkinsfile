@@ -137,7 +137,7 @@ pipeline {
                     echo "🏗️ Creating application archive..."
                     tar -czf flask-app-${RELEASE_TAG}.tar.gz \
                         app/ requirements.txt docker-compose.yml nginx/ scripts/ \
-                        Dockerfile .env.production || true
+                        Dockerfile Dockerfile.jenkins .env.production || true
                     
                     echo "✅ Application package created: flask-app-${RELEASE_TAG}.tar.gz"
                     ls -lh *.tar.gz || true
@@ -234,7 +234,7 @@ pipeline {
                             done
                             
                             echo "📄 Copying additional files..."
-                            for file in Dockerfile requirements.txt Makefile; do
+                            for file in Dockerfile.jenkins Dockerfile requirements.txt Makefile; do
                                 if [ -f "$file" ]; then
                                     echo "📄 Copying file: $file"
                                     scp -i $SSH_KEY -o StrictHostKeyChecking=no \
