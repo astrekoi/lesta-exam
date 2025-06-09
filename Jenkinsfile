@@ -256,14 +256,14 @@ pipeline {
                                     
                                     echo \"🔐 Generating SSL certificates...\"
 
-                                    if sudo make generate-ssl; then
+                                    if make generate-ssl; then
                                         echo \"✅ SSL certificates generated successfully\"
                                     else
                                         echo \"❌ Failed to generate SSL certificates\"
                                         echo \"🔧 Trying to fix SSL directory permissions...\"
-                                        sudo mkdir -p ./nginx/ssl
-                                        sudo chown -R \$USER:\$USER ./nginx/ssl
-                                        sudo chmod -R 755 ./nginx/ssl
+                                        mkdir -p ./nginx/ssl
+                                        chown -R \$USER:\$USER ./nginx/ssl
+                                        chmod -R 755 ./nginx/ssl
                                         
                                         echo \"🔐 Retrying SSL generation...\"
                                         if make generate-ssl; then
