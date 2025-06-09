@@ -44,25 +44,19 @@ pipeline {
                 echo '📥 Downloading repository as ZIP...'
                 
                 sh '''
-                    # Очистка workspace (POSIX совместимо)
                     rm -rf * .git* || true
                     
-                    # Скачивание ZIP архива репозитория
                     curl -L https://github.com/astrekoi/lesta-exam/archive/refs/heads/main.zip -o repo.zip
                     
-                    # Распаковка
                     unzip -o repo.zip
                     
-                    # Перемещение файлов (без bash shopt)
                     cd lesta-exam-main
                     find . -maxdepth 1 -name ".*" -exec cp -r {} .. \\; 2>/dev/null || true
                     find . -maxdepth 1 ! -name "." ! -name ".." -exec cp -r {} .. \\;
                     cd ..
                     
-                    # Удаление временных файлов
                     rm -rf lesta-exam-main repo.zip
                     
-                    # Проверка содержимого
                     echo "✅ Repository contents:"
                     ls -la
                 '''
@@ -210,7 +204,7 @@ pipeline {
                             ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
                                 "ls -la ${TARGET_PATH}"
                             
-                            echo "📄 Copying docker-compose.yml..."
+                            echo "📄 Copying configuration files..."
                             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
                                 ${DOCKER_COMPOSE_FILE} ${SSH_USERNAME}@${PROD_IP}:${TARGET_PATH}/
                             
@@ -242,7 +236,7 @@ pipeline {
                                 fi
                             done
                             
-                            echo "🚀 Executing deployment..."
+                            echo "🚀 Executing deployment with SSL generation..."
                             ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${SSH_USERNAME}@${PROD_IP} \
                                 "export TARGET_PATH='${TARGET_PATH}' && \
                                 export RELEASE_TAG='${RELEASE_TAG}' && \
@@ -257,19 +251,55 @@ pipeline {
                                     echo \"🛑 Stopping old version...\"
                                     docker compose down || true
                                     
+                                    echo \"🔐 Checking SSL directory permissions...\"
+                                    ls -la ./nginx/ssl/ 2>/dev/null || echo \"SSL directory does not exist\"
+                                    
+                                    echo \"🔐 Generating SSL certificates...\"
+
+                                    if sudo make generate-ssl; then
+                                        echo \"✅ SSL certificates generated successfully\"
+                                    else
+                                        echo \"❌ Failed to generate SSL certificates\"
+                                        echo \"🔧 Trying to fix SSL directory permissions...\"
+                                        sudo mkdir -p ./nginx/ssl
+                                        sudo chown -R \$USER:\$USER ./nginx/ssl
+                                        sudo chmod -R 755 ./nginx/ssl
+                                        
+                                        echo \"🔐 Retrying SSL generation...\"
+                                        if make generate-ssl; then
+                                            echo \"✅ SSL certificates generated after fixing permissions\"
+                                        else
+                                            echo \"❌ SSL generation failed, using sudo...\"
+                                            sudo make generate-ssl || echo \"⚠️ SSL generation failed completely\"
+                                        fi
+                                    fi
+                                    
+                                    echo \"🔍 Verifying SSL certificates...\"
+                                    ls -la ./nginx/ssl/ || echo \"⚠️ SSL directory not found\"
+                                    
                                     if [ ! -z \"\$DOCKER_IMAGE_FULL\" ]; then
                                         echo \"📥 Pulling image \$DOCKER_IMAGE_FULL...\"
                                         docker pull \$DOCKER_IMAGE_FULL || echo \"⚠️ Could not pull image, will build locally\"
                                     fi
                                     
-                                    echo \"🚀 Starting application...\"
-                                    docker compose up -d --build
+                                    echo \"🚀 Starting application with SSL...\"
+                                    make prod || docker compose up -d --build
                                     
                                     echo \"⏳ Waiting for services...\"
                                     sleep 30
                                     
+                                    echo \"📊 Container status:\"
+                                    docker compose ps
+                                    
                                     echo \"🏥 Health check...\"
-                                    curl -f http://localhost/ping || curl -f http://localhost:8080/ping || echo \"⚠️ Health check failed\"
+
+                                    for endpoint in \"http://localhost/ping\" \"https://localhost/ping\" \"http://localhost:8080/ping\"; do
+                                        echo \"🔍 Checking \$endpoint...\"
+                                        curl -f -k --connect-timeout 5 \$endpoint && echo \"✅ \$endpoint OK\" || echo \"❌ \$endpoint failed\"
+                                    done
+                                    
+                                    echo \"🔐 SSL Certificate info:\"
+                                    make ssl-info || echo \"⚠️ Could not get SSL info\"
                                     
                                     echo \"✅ Deployment completed!\"
                                 '"
@@ -279,6 +309,7 @@ pipeline {
             }
         }
 
+
     }
     
     post {
@@ -287,7 +318,6 @@ pipeline {
                 try {
                     echo '🧹 Cleaning up...'
                     sh '''
-                        # Очистка временных файлов
                         rm -f repo.zip .env.production || true
                         rm -rf .lint-venv || true
                     '''
