@@ -84,10 +84,12 @@ services:
 
   jenkins:
     <<: *restart-policy
-    image: jenkins/jenkins:${JENKINS_VERSION:-2.504.2-lts}
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
     container_name: exam_jenkins
     privileged: true
-    user: "${JENKINS_USER_ID:-root}:${JENKINS_GROUP_ID:-root}"
+    user: "root:root"
     environment:
       JENKINS_OPTS: "${JENKINS_OPTS:---prefix=/jenkins}"
       JAVA_OPTS: >
@@ -104,90 +106,96 @@ services:
         workflow-aggregator:latest
         git:latest
         docker-workflow:latest
+        docker-commons:latest
         pipeline-stage-view:latest
         blueocean:latest
         credentials:latest
         ssh-agent:latest
+        ssh-credentials:latest
         workflow-api:latest
         workflow-basic-steps:latest
         workflow-cps:latest
         workflow-durable-task-step:latest
+        workflow-job:latest
+        workflow-support:latest
+        workflow-scm-step:latest
         pipeline-model-definition:latest
         pipeline-utility-steps:latest
-        docker-commons:latest
-        docker-java-api:latest
-        github:latest
-        github-branch-source:latest
-        pipeline-github-lib:latest
-        timestamper:latest
-        ws-cleanup:latest
-        build-timeout:latest
-        ant:latest
-        gradle:latest
-        maven-plugin:latest
-        nodejs:latest
-        jdk-tool:latest
-        pipeline-maven:latest
-        pipeline-nodejs:latest
-        build-tools-installer:latest
-        tool-env:latest
-        configuration-as-code:latest
-        job-dsl:latest
-        maven-dependency-update-trigger:latest
-        gradle-plugin:latest
-        sonar:latest
-        jacoco:latest
-        junit:latest
-        xvfb:latest
-        performance:latest
-        publish-over-ssh:latest
-        ec2:latest
-        kubernetes:latest
-        terraform:latest
-        ansible:latest
-        matrix-project:latest
-        build-name-setter:latest
-        envfile:latest
-        extended-choice-parameter:latest
-        conditional-buildstep:latest
-        parameterized-trigger:latest
-        copy-artifact:latest
-        archive-artifacts:latest
-        htmlpublisher:latest
-        test-results-analyzer:latest
-        build-monitor-plugin:latest
-        dashboard-view:latest
-        nested-view:latest
-        favorite:latest
-        cloudbees-folder:latest
-        workflow-multibranch:latest
         pipeline-input-step:latest
         pipeline-milestone-step:latest
         pipeline-rest-api:latest
         pipeline-build-step:latest
         pipeline-graph-analysis:latest
-        workflow-job:latest
-        workflow-support:latest
-        workflow-scm-step:latest
         pipeline-stage-step:latest
-        lockable-resources:latest
-        resource-disposer:latest
-        build-user-vars-plugin:latest
-        environment-script:latest
-        envinject:latest
-        global-variable-string-parameter:latest
+        pipeline-maven:latest
+        github:latest
+        github-branch-source:latest
+        github-api:latest
+        git-client:latest
+        branch-api:latest
+        scm-api:latest
+        matrix-auth:latest
+        matrix-project:latest
+        gradle:latest
+        maven-plugin:latest
+        nodejs:latest
+        adoptopenjdk:latest
+        junit:latest
+        htmlpublisher:latest
+        mailer:latest
+        favorite:latest
+        folders:latest
+        timestamper:latest
+        ws-cleanup:latest
+        build-timeout:latest
+        credentials-binding:latest
+        plain-credentials:latest
+        authentication-tokens:latest
+        structs:latest
+        workflow-multibranch:latest
+        config-file-provider:latest
+        token-macro:latest
+        script-security:latest
+        durable-task:latest
+        display-url-api:latest
+        checks-api:latest
+        plugin-util-api:latest
+        bootstrap5-api:latest
+        jquery3-api:latest
+        echarts-api:latest
+        font-awesome-api:latest
+        instance-identity:latest
+        jackson2-api:latest
+        gson-api:latest
+        json-api:latest
+        json-path-api:latest
+        commons-lang3-api:latest
+        commons-text-api:latest
+        caffeine-api:latest
+        okhttp-api:latest
+        apache-httpcomponents-client-4-api:latest
+        snakeyaml-api:latest
+        variant:latest
+        trilead-api:latest
+        joda-time-api:latest
+        jakarta-activation-api:latest
+        jakarta-mail-api:latest
+        jaxb:latest
+        javadoc:latest
+        ant:latest
     ports:
       - "${JENKINS_PORT:-9090}:8080"
       - "${JENKINS_AGENT_PORT:-50000}:50000"
     volumes:
       - ./volumes/jenkins/home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./volumes/jenkins/plugins.txt:/usr/share/jenkins/ref/plugins.txt:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-f", "-s", "http://localhost:8080/jenkins/login"]
       interval: 60s
       timeout: 10s
       retries: 5
-      start_period: 180s
+      start_period: 240s
     logging: *default-logging
     networks:
       - app-network
