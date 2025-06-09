@@ -169,7 +169,7 @@ pipeline {
                 echo "📤 Pushing image to Docker Hub..."
                 script {
                     withCredentials([usernamePassword(
-                        credentialsId: 'docker-registrys', 
+                        credentialsId: 'docker-registry', 
                         usernameVariable: 'DOCKER_USERNAME', 
                         passwordVariable: 'DOCKER_PASSWORD'
                     )]) {
